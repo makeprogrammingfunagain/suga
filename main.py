@@ -1,7 +1,22 @@
+import datetime
+import pytz
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+import matplotlib as mpl
+
+
+def compute_colors(base_color, n, lighten_factor=0.25):
+    colors = [base_color]
+    for i in range(1, n):
+        base_color = mpl.colors.to_rgb(base_color)
+        # Lighten the color
+        base_color = [min(1, c + lighten_factor) for c in base_color]
+        colors.append(mpl.colors.to_hex(base_color))
+    colors = colors[1:] + ["red"]
+    return colors
 
 
 data = pd.read_csv("./glucose_data.csv", usecols=["Time (UTC)", "Glucose Reading (mg/dL)"])
@@ -23,11 +38,25 @@ st.line_chart(data[["Time (Pacific)", "Glucose Reading (mg/dL)"]].set_index("Tim
 
 # One line per day, to compare easily
 data["Day"] = data["Time (UTC)"].dt.tz_convert('US/Pacific').dt.date
+
+pacific = pytz.timezone('US/Pacific')
+now = datetime.datetime.now(pacific)
+data['DaysAgo'] = (now - data['Time (Pacific)']).dt.days
+
+num_days = data['DaysAgo'].nunique()
+colors_range = compute_colors('#000080', num_days)
+
 data = data.reset_index().rename(columns={"index": "Row Number"})
 chart = alt.Chart(data).mark_line().encode(
     x=alt.X('hoursminutes(Time (Pacific)):T', title='Time of Day'),
     y='Glucose Reading (mg/dL):Q',
-    color=alt.Color('Day:N', timeUnit='yearmonthdate', title='Date', legend=alt.Legend(format='%a %b %d')),
+    color=alt.Color(
+        'DaysAgo:O',
+        scale=alt.Scale(
+            domain=list(range(num_days)),
+            range=colors_range
+        ),
+        legend=None),
     tooltip=['Row Number:O', 'Day:N', 'Glucose Reading (mg/dL):Q', 'hoursminutes(Time (Pacific)):T']
 ).interactive()
 
